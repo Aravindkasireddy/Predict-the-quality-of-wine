@@ -1,0 +1,1349 @@
+---
+title: "Predict the quality of wine"
+date: "`r format(Sys.Date(), '%B %e, %Y')`"
+output: 
+  rmdformats::downcute:
+    toc_depth: 4
+    toc_float: 
+        collapsed: True
+    highlight: tango
+    communication_channel_style: dark
+    link-citations: yes
+bibliography: bibliography.bib
+---
+
+
+
+
+# Introduction
+
+From Wikipedia, Red wine is a type of [wine](https://en.wikipedia.org/wiki/Wine) made from dark-colored [grape varieties](https://en.wikipedia.org/wiki/Grape_varieties). The actual [color of the wine](https://en.wikipedia.org/wiki/Wine_color) can range from intense violet, typical of young wines, through to brick red for mature wines and brown for older red wines. The [juice](https://en.wikipedia.org/wiki/Juice) from most purple grapes is greenish-white, the red color coming from anthocyan pigments (also called [anthocyanins](https://en.wikipedia.org/wiki/Anthocyanins)) present in the skin of the grape; exceptions are the relatively uncommon [teinturier](https://en.wikipedia.org/wiki/Teinturier) varieties, which produce a red-colored juice. Much of the red-wine production process therefore involves extraction of color and flavor components from the grape skin. It is a delicacy around the world. 
+
+In the following we will be exploring the data set "Red Wine Quality", from [**kaggle**](https://www.kaggle.com/uciml/red-wine-quality-cortez-et-al-2009) 
+
+# Presentation and Description of the Problem
+
+## *Red Wine Quality*
+
+The data set we will be using is related on the red variant of the *Portuguese* **"Vinho Verde"** wine. For more details, consult the reference [Cortez et al., 2009]. Due to privacy and logistic issues, only physicochemical (inputs) and sensory (the output) variables are available (e.g. there is no data about grape types, wine brand, wine selling price, etc.).  
+
+We would like to see how the variables from our data set correlate with one another. For example, we will show how alcohol correlates with the quality of the wine and pH value of the wine. The most important correlation we will look for is how the 11 independent variables correlate with quality - the dependent variable of the data set.
+
+At the end we will try to show what happens when we pick which level of quality actually represents good from not so great wines in this data set.
+
+# Business Questions
+After seeing a dataset trying to guess how good red wine is using numbers, I got curious. Even though I don't drink much alcohol, I wanted to know what I could do with this data.  I had questions like: Can I use the math tricks I learned on this wine data? Will the models I learned work well even though this dataset only has numbers, not categories? I heard Random Forest is great, but will it be great for this wine dataset I found? Also, I wanted to know which numbers are most important for predicting wine quality in different models.
+
+First we'll be loading the libraries that we will use for the analysis:
+
+```{r setup, include=T, warning=F, message=F, error=F}
+knitr::opts_chunk$set(echo = T)
+library(tidyverse) 
+library(dplyr)     
+library(ggplot2)   
+library(GGally)      # extension of ggplot2, ggcorr()
+library(ggpubr)      # ggarrange()
+library(DT)          # datatable()
+library(mlr)         # summarizeColumns()
+library(corrgram)    # correlation matrix/grams/plots
+library(randomForest)# random forests for regression and classification
+library(mlbench)     # machine learning
+library(caret)       # streamline the model training process for complex regression
+library(knitr)       # dynamic report generation
+```
+
+Next, will load the data:
+
+```{r}
+data <- read.csv("winequality-red.csv")
+```
+
+```{r include=F}
+colnames(data) <- c("Fixed.Acidity", "Volatile.Acidity", "Citric.Acid", "Residual.Sugar", "Chlorides", "Free.Sulfur.Dioxide", "Total.Sulfur.Dioxide", "Density", "pH", "Sulphates", "Alcohol", "Quality")
+```
+
+# Presentation of the Data
+
+## *The Data Set:*
+
+```{r}
+datatable(data, rownames = F, filter = "top", caption = "Red Wine Quality Data Set", options = list(searching = F, pageLength = 5, lengthMenu = c(5, 10, 15, 20), scrollX = T,  autoWidth = T))
+```
+
+## *Content Description*
+
+The data set consists of 1599
+
+```{r}
+colnames(data)
+```
+
+### *Meaning of the variables (based on physicochemical tests)*:
+
+- **1. Fixed.Acidity:** tartaric acid, measured in $g/dm^3$
+-- most of the acids involved with wine are [fixed acids](https://en.wikipedia.org/wiki/Fixed_acids),^[[Acids in wine](https://en.wikipedia.org/wiki/Acids_in_wine)] non-volatile. 
+
+- **2. Volatile.Acidity:** acetic acid, measured in $g/dm^3$// 
+-- high levels can lead to unpleasant vinegar taste called *vinegar taint*, contributes to many wine spoilage [yeasts](https://en.wikipedia.org/wiki/Yeasts) and [bacteria](https://en.wikipedia.org/wiki/Bacteria).
+
+- **3. Citric.Acid:** measured in $g/dm^3$
+-- is usually found in small quantities, one of the *three primary* acids, adds 'freshness' and flavor to wines.^[[Citric acid](https://en.wikipedia.org/wiki/Citric_acid)]
+
+- **4. Residual.Sugar:** measured in $g/dm^3$
+-- the amount of sugar remaining after the [fermantation process](https://en.wikipedia.org/wiki/Fermentation_in_winemaking), it is rare to find wines with less than 1 gram/liter and wines with greater than 45 grams/liter are considered sweet.^[[What is Residual Sugar in Wine](https://winefolly.com/deep-dive/what-is-residual-sugar-in-wine/)]  
+
+- **5. Chlorides:** sodium chloride, measured in $g/dm^3$
+-- the amount of salt in wine.^[[Chloride concentration in red wines: influence of *terroir* and grape type](https://www.scielo.br/j/cta/a/HQsrPrPMNZYgRzSKtrjHyHh/?lang=en)]
+
+- **6. Free.Sulfur.Dioxide:** measured in $mg/dm^3$
+-- free form of $SO_2$ exists in equilibrium between molecular $SO_2$ (as a dissolved gas) and bisulfite ion; it prevents microbial growth and the oxidation of wine.[@Jenny:2019]
+
+- **7. Total.Sulfur.Dioxide:** measured in $mg/dm^3$
+-- amount of free and bound forms of $SO_2$. In low concentrations, $SO_2$ is mostly undetectable in wine, but at free $SO_2$ concentrations over 50 $ppm$, $SO_2$ becomes evident in the nose and taste of wine.[@Maureen:2018]
+
+- **8. Density:** measured in $g/cm^3$
+-- depends on percentage of the alcohol and sugar content.^[[Measurement of Density of wine](https://www.awri.com.au/industry_support/winemaking_resources/laboratory_methods/chemical/density/)]
+
+- **9. pH** the level of acidity
+-- range between 0 (very acidic) and 14 (very basic), most wines are in a range 3-4 on the pH scale.^[[Acidity and pH](https://www.awri.com.au/industry_support/winemaking_resources/frequently_asked_questions/acidity_and_ph/)]
+
+- **10. Sulphates:** potassium sulphate, measured in $g/dm^3$
+-- wine additive/food preservative, contributes to Sulfur Dioxide Gas ($SO_2$).[@Rachael:2019]
+
+- **11. Alcohol:** % by volume
+
+- **12. Quality:** range between 0 and 10
+
+## *Overview of the Data*
+
+### *Data-type Info*
+
+Using `str()` to display the internal structure of the data set.
+```{r}
+str(data)
+```
+
+### *Summarization*
+
+With the `summary()` function we do statistical analysis on our data.
+```{r}
+summary(data) 
+```
+With the `summarizeColumns()` function, from `mlr` library, we see the type of data and that there is no NA values, so we can proceed with **EDA**.^[[Exploratory Data Analysis](https://en.wikipedia.org/wiki/Exploratory_data_analysis)]
+```{r}
+summarizeColumns(data) %>% 
+  datatable(., 
+            class = "stripe hover row-border order-column", 
+            options = list(pageLength = 12,
+                           scrollX = T), 
+            autoHideNavigation = T) 
+```
+
+#### *Observation from the Summary*
+
+ - Residual Sugar: mean is $2.5 g/dm^3$, but we have a wine that's an outlier here with $15.5 g/dm^3$.
+ - Free Sulfur Dioxide: mean is $15.8 mg/dm^3$, max is 72 which is quite high because at $75\%$ we have $21 ppm$.
+ - pH: min is $2.7$, mean is $3.3$ and max is $4.01$. We can conclude that there is no basic wines in the data set, as there are no high pH wines.
+ - Alcohol: lightest wine is $8.4\%$, where strongest is at $14.9\%$.
+ - Quality: min value is 3, mean is 5.6 and the max is 8.
+
+# Data Analysis and Visualisation
+
+## *Quality - the Dependent Variable*
+
+```{r echo=F}
+summarizeColumns(data) %>% 
+  filter(name == "Quality") %>% 
+  kable()
+
+data %>% 
+  ggplot() +
+  geom_histogram(aes(Quality), binwidth = 0.2, fill = "dark red") +
+  scale_x_continuous(breaks = seq(3, 8, 1)) +
+  ggtitle('Quality Distribution') +
+  ylab('count') +
+  geom_vline(aes(xintercept = mean(Quality)), color = "blue", linetype = "dashed", size = 1) +
+  geom_text(aes(x = 5.6, label = "Mean Value", y = 400), colour = "dark red", angle = 90, vjust = 1.2) +
+  theme_bw()
+```
+
+As we can see, vast majority of the quality of wine is around 5 and 6, which is  `r sum(prop.table(table(data$Quality))[3:4]) * 100`%. This also means that our data set is unbalanced. This makes it harder for us to pin point factor that could affect Quality in any possible way.
+
+```{r echo=F}
+data %>% 
+  ggplot(aes(factor(Quality), Density)) +
+  geom_boxplot(fill = "dark red") +
+  ggtitle('Quality and Density') +
+  theme_bw()
+
+summarizeColumns(data) %>% 
+  filter(name == "Density") %>% 
+  kable()
+```
+
+Clearly Density, doesn't have a big effect on the Quality, but there are clear outliers.
+
+```{r echo=F}
+data %>% 
+  ggplot(aes(factor(Quality), Alcohol)) +
+  geom_boxplot(fill = "dark red") +
+  ggtitle('Quality and Alcohol') +
+  theme_bw()
+
+summarizeColumns(data) %>%  
+  filter(name == "Alcohol") %>% 
+  kable()
+```
+
+We can see that the percentage of alcohol is positively correlated with the quality. Higher quality wines have a bigger percentage of alcohol in them. 
+
+```{r echo=F}
+data %>% 
+  ggplot(aes(factor(Quality), Residual.Sugar)) +
+  geom_boxplot(fill = "dark red") +
+  ggtitle('Quality and Residual.Sugar') +
+  theme_bw()
+
+summarizeColumns(data) %>% 
+  filter(name == "Residual.Sugar") %>% 
+  kable()
+```
+
+We can see that there is no significant relationship between Quality and Residual.Sugar, also the outlier values are not impacting the Quality, which means we can safely discard Residual.Sugar in the rest of our analysis.
+
+## *Distribution of Independent Variables*
+
+```{r echo=F}
+d1 <- data %>% 
+  ggplot(aes(Fixed.Acidity)) +
+  geom_density(colour = "dark red") 
+
+d2 <- data %>% 
+  ggplot(aes(Volatile.Acidity)) +
+  geom_density(colour = "dark red")
+
+d3 <- data %>% 
+  ggplot(aes(Citric.Acid)) +
+  geom_density(colour = "dark red")
+
+d4 <- data %>% 
+  ggplot(aes(Residual.Sugar)) +
+  geom_density(colour = "dark red")
+
+d5 <- data %>% 
+  ggplot(aes(Chlorides)) +
+  geom_density(colour = "dark red")
+
+d6 <- data %>% 
+  ggplot(aes(Free.Sulfur.Dioxide)) +
+  geom_density(colour = "dark red")
+
+d7 <- data %>% 
+  ggplot(aes(Total.Sulfur.Dioxide)) +
+  geom_density(colour = "dark red")
+
+d8 <- data %>% 
+  ggplot(aes(Density)) +
+  geom_density(colour = "dark red")
+
+d9 <- data %>% 
+  ggplot(aes(pH)) +
+  geom_density(colour = "dark red")
+
+d10 <- data %>% 
+  ggplot(aes(Sulphates)) +
+  geom_density(colour = "dark red")
+
+d11 <- data %>% 
+  ggplot(aes(Alcohol)) +
+  geom_density(colour = "dark red")
+
+ggarrange(d1, d2, d3, d4, nrow = 2, ncol = 2)
+ggarrange(d5, d6, d7, d8, d9, d10, nrow = 3, ncol = 2)
+d11  
+```
+
+Using `geom_density()` we show where the values are concentrated over the interval.
+
+ - pH values are usually around $3$ and $4$
+ - Chlorides - the amount of salt in wine is most common around $0.1$. 
+ 
+## *Interactions between Independent Variables and Quality*
+
+Using `ggcorr()` from `GGAlly` library, we will visualize positive (**1**) and negative (**-1**) correlation between variables. Color of the tiles represents correlation coefficient between any two variable and they show how strong (or how weak) the relationship is between them. **0** represents that there is no correlation.
+
+```{r echo=F}
+corr_data <- data
+colnames(corr_data) <- c("F.A.", "V.A.", "C.A.", "R.S.", "Chlor.", "F.S.D.", "T.S.D", "Dens.", "pH", "Sulph.", "Alc.", "Qua.")
+ggcorr(corr_data, geom = "tile", label = T)
+```
+ 
+### *Factors related to Quality:*
+ - Three key positive relationships between Quality and Citric.Acid, Alcohol and Sulphates.
+ - Three key negative relationships between Quality and pH, Density and Volatile.Acidity.
+ - Other variables don't have any significant relationships with Quality.
+
+### *Other interesting factors:*
+ - Alcohol has a weak positive correlation with pH value.
+ - Alcohol has a strong negative correlation with Density.
+ - Density and Citric.Acid have a strong positive correlation with Fixed.Acidity.
+ - pH value has a negative correlation with Sulphates, Citric.Acid, Fixed.Acidity and Density 
+ 
+## *Alcohol* 
+ 
+```{r echo=F, warning=F}
+summarizeColumns(data) %>% 
+  filter(name == "Alcohol") %>% 
+  kable()
+
+data %>% 
+  ggplot() +
+  geom_histogram(aes(Alcohol), binwidth = 0.1, fill = "dark red") +
+  scale_x_continuous(breaks = seq(8, 15, 0.5), limits = c(8, 15)) +
+  ylab('count') +
+  ggtitle('Levels of Alcohol') +
+  geom_vline(aes(xintercept = mean(Alcohol)), color = "blue", linetype = "dashed", size = 1) +
+  geom_text(aes(x = 10.42, label = "Mean Value", y = 100), colour = "dark red", angle = 90, vjust = 1.2) +
+  theme_bw()
+```
+
+It looks like levels of alcohol are skewed, this could be because the data set is relatively small. Here we can see that most frequently wines have $9.5\%$ of alcohol in them, mean is $10.42\%$.
+
+We already saw that Density doesn't have an important effect on Quality, but let's see is there any meaningful information we can find when we look at Density and Alcohol:
+
+```{r echo=F}
+data %>% 
+  ggplot(aes(Density, Alcohol)) +
+  geom_point(alpha = 0.2, colour = "dark red", position = position_jitter(h = 0)) +
+  geom_smooth(method = "lm", fill = "skyblue")
+```
+
+We can't really conclude anything without making a correlation with Quality. So now we will combine Alcohol and Density as we know they are in a strong relationship and see how they together correlate with Quality.
+
+```{r echo=F}
+data %>%  
+  ggplot(aes(x = Density, y = Alcohol)) +
+  geom_boxplot(aes(colour = factor(Quality))) +
+  coord_cartesian(xlim = c(min(data$Density), 1.005), ylim = c(8,15)) +
+  ggtitle('Alcohol and Density in comparison to Quality') +
+  theme_bw()
+
+summarizeColumns(data) %>% 
+  filter(name == "Density" | name == "Alcohol") %>% 
+  kable()
+```
+
+As Density increases, Quality decreases. It's not clear from this examination, how much Density actually affects the quality of wine because Alcohol has the reverse effect on Quality to a similar degree. Because we know Alcohol causes change in Density it would be wise to say that Alcohol affects both Density and Quality.
+
+### *Alcohol vs Citric.Acid/Chlorides/Volatile.Acidity/Sulphates in correlation to Quality.*
+
+```{r echo=F}
+data %>% 
+  ggplot(aes(x = factor(round(Alcohol)), y = Citric.Acid)) +
+  geom_boxplot(aes(colour = factor(Quality))) +
+  ggtitle('Alcohol and Citric.Acid in comparison to Quality') +
+  theme_bw()
+  
+summarizeColumns(data) %>% 
+  filter(name == "Citric.Acid" | name == "Alcohol") %>% 
+  kable()
+```
+
+Firstly, we can see that all wines with percentage level below 14 have a positive correlation between Citric.Acid and Alcohol, which means as the level of Citric.Acid increases so does the Quality of the wine. Conversely, lower-quality of wines have low values of Citric.Acid.    
+
+```{r echo=F}
+data %>% 
+  ggplot(aes(x = factor(round(Alcohol)), y = Chlorides)) +
+  geom_boxplot(aes(colour = factor(Quality))) +
+  ggtitle('Alcohol and Chlorides in comparison to Quality') +
+  theme_bw()
+
+summarizeColumns(data) %>% 
+  filter(name == "Chlorides" | name == "Alcohol") %>% 
+  kable()
+```
+
+Secondly, we see that wine quality decreases, when the chloride level decreases in alcohol before it reaches 12%. After 12% the quality starts to improve. 
+
+```{r echo=F}
+data %>% 
+  ggplot(aes(x = factor(round(Alcohol)), y = Volatile.Acidity)) +
+  geom_boxplot(aes(colour = factor(Quality))) +
+  ggtitle('Alcohol and Volatile.Acidity in comparison to Quality') +
+  theme_bw()
+
+summarizeColumns(data) %>% 
+  filter(name == "Volatile.Acidity" | name == "Alcohol") %>%
+  kable()
+```
+
+Thirdly, we can see that Volatile.Acidity decreases as the alcohol level increases (range between 9% and 12%). 
+And we can see that there is a sudden change in value in Volatile.Acidity from 12% to 13% of Alcohol for wines of highest Quality. 
+
+```{r echo=F}
+data %>% 
+  ggplot(aes(x = factor(round(Alcohol)), y = Sulphates)) +
+  geom_boxplot(aes(colour = factor(Quality))) +
+  ggtitle('Alcohol and Sulphates in comparison to Quality') +
+  theme_bw()
+
+summarizeColumns(data) %>% 
+  filter(name == "Sulphates" | name == "Alcohol") %>%
+  kable()
+```
+
+And lastly, as Sulphate amount increases so does the Quality of the wine. We can also notice that there is increasingly more Sulphate in high-quality wines as alcohol percentage increases.
+
+
+The exploration of the data we focused on in the *Red Wine Quality* data set show that there are multiple factors impacting the Quality of the wine, positively and negatively. WIth this particular analysis we saw that the clear outlier here is that high percentage of Alcohol correlates to high-quality wines. Following, it seems that high-quality wines have lower Volatile.Acidity which matches with our results. Change in Residual.Sugar  had no effect on Quality and it didn't seem to impact any other variable. As we saw the Quality levels of our wines are unbalanced which probably severely impacted our final results and we could say we were limited by it in grand scheme of things. This meant that more than $80\%$ of the wine tested in this data set did not satisfy our Personal.Quality test. Also, as we saw at the beginning Free.Sulfur.Dioxide, Total.Sulfur.Dioxide and Density weren't balanced with the rest of the data, so this part of the data would need another further treatment. We can conclude that the levels of wine quality are based on personal taste of experts, but there are also factors like year of production, brew time, location, wine brand, etc. that could have an important impact to our data that we didn't have access too. 
+
+
+# Data Pre-processing
+
+## Enabling Libraries
+First and foremost, let’s enable the possible libraries that we are going to work with. I am thinking of at least dplyr, tidyr, and glue for easier time of pre-processing the data. Also ggplot2 and plotly for helpful visualization of data.
+
+```{r,warning=FALSE,message=FALSE}
+library(dplyr) 
+library(tidyr) 
+library(glue) 
+
+library(ggplot2) 
+library(plotly)
+library(GGally) 
+library(rsample) 
+
+library(performance) 
+library(lmtest) 
+library(car) 
+library(gtools) 
+library(caret) 
+
+library(class) 
+library(e1071)
+library(ROCR) 
+library(partykit) 
+library(randomForest) 
+```
+
+
+## Reading the Dataset
+Let’s read the data and put it inside a wine object. Taking a look for some first data of it:
+```{r}
+wine <- read.csv("winequality-red.csv")
+head(wine)
+glimpse(wine)
+```
+
+As explained in the About the Dataset section, it’s clear about the separation of the target and predictor variables. The target variable is the quality, while the rest will be used as predictors.
+
+It looks fine overall, no predictors seem to have wrong data types, but since we are going to try and use some classification models, we would need to make the quality column to be categorical. Since we can see from the glimpse() function above that the quality ranges from 0 to 10 and it seems to only use integers, either we factorize the column as is, or we categorize the numbers into some categories/groups.
+
+## Verifying No Near-Zero Variance Predictors
+Checking if any of the columns has near-zero variance, since this would be necessary to do especially for some classification models, like Random Forest, since inserting such columns would mean including irrelevant columns and tampering with the analysis.
+```{r}
+nearZeroVar(wine)
+```
+
+Usually if there is something, the function above will spit out the column indexes of such predictors. But since it shows integer(0), it means that the function cannot find any near-zero variance predictors, that means our dataset is varying enough to be able to give us some insights.
+
+## Checking Missing Values
+```{r}
+colSums(is.na(wine))
+```
+
+Seems like all predictors have no missing values.
+
+## Adjusting Target Variable for Classification Models
+Let’s check the current proportion of the target variable.
+
+```{r}
+prop.table(table(wine$quality))
+```
+
+
+If we are going to use the classification machine learning models, to still use the different numbers as “classes” seems not appropriate, since the numbers represent an order of “ratings”. Simple regression models that are predicting numeric targets would be fine, but we would need to “categorize” the target variable if we would like to use the classification machine learning models.
+
+One thing that we should avoid is a class imbalance situation. I originally wanted to split the targets of at least 7 to be high quality (or 1) while the rest would be low (or 0) since 7 out of 10 seems fair to be categorized as high, but looking at the proportion, this might not be ideal. Since the data is quite centered on values 5 and 6, I think it would be better to split them both into different classes. So for now I will be splitting 6 an above into high, and the rest would be low. I will make a new column called quality_high to categorize the quality column.
+
+```{r}
+wine$quality_high <- as.factor(ifelse(wine$quality>=6, 1, 0))
+glimpse(wine$quality_high)
+```
+
+```{r}
+prop.table(table(wine$quality_high))
+
+```
+
+A 53:47 split! Seems balanced enough, so we may not need to do any down or up-sampling.
+
+## Cross-validation / Train-Test Splitting
+
+Next, we will separate the data into train and test ones, with the default of 80:20 split, using strata of quality_high to keep the balanced proportion. To make the random sampling stay, I will use seed of 314 since I like pi number.
+
+```{r}
+RNGkind(sample.kind = "Rounding") # tambahan khusus u/ R 3.6 ke atas 
+set.seed(314) # mengunci random number yang dipilih
+
+# index sampling
+index_wine <- initial_split(wine, prop = 0.8, strata = "quality_high")
+
+# splitting
+wine_train <- training(index_wine)
+wine_test <- testing(index_wine)
+
+#checking proportions on separated dataframes
+prop.table(table(wine_train$quality_high))
+```
+
+```{r}
+prop.table(table(wine_test$quality_high))
+```
+
+#  EDA and Data Visualization
+## Overall Summary Statistics
+
+```{r}
+summary(wine)
+```
+
+Insights:
+
+- Some predictors like fixed.acidity, total.sulfur.dioxide, free.sulfur.dioxide, and sulphates seems to have outliers, based solely on the max numbers having much more larger number than the mean, median, or 3rd quartile.
+- density and pH seems to have quite a good kind of distributions, based on how near the max is to each of their median and/or 3rd quartile of the data.
+-We might need to take these outliers out. But for now, we are just going to analyze them as is, and see how it affects our models.
+
+# Univariate Plots Section
+
+Our dataset consists of 13 - 1 variables, with 1599 observations. I excluded the
+variable X in the analysis as it is simply another ID column that R Studio 
+doesn't need.
+
+```{r echo=FALSE, Univariate_Plots}
+
+redwine <-wine
+dim(redwine)
+str(redwine)
+```
+
+Number of missing values in the dataset:
+
+```{r echo=FALSE}
+sum(is.na(redwine))
+
+redwine$quality.factor = factor(redwine$quality)
+
+ggplot(data = redwine, aes(quality)) +
+  geom_histogram(binwidth = .5, col="black", fill="grey", alpha = .8) +
+  scale_x_continuous(breaks=seq(0,8,1))
+
+```
+
+I decided to explore the distribution of quality ratings first. The histogram 
+reveals that most red wines in the dataset are of medium quality (μ 5.63) on a 
+scale between 0 (very bad) and 10 (very excellent). The worse red wine has a 
+quality of 3 whereas the best red wine in the dataset has a max. quality score 
+of 8. The distribution is slightly skewed to the left suggesting that there 
+should be a higher number of wines from medium to higher quality in the dataset. 
+
+ I am attempting to transform the citric acid variable using the 
+squareroot method in order to get a clearer view of its distrution. The 
+distrutions looks like a waveform peaking and declining at various points of the
+scale. Zooming in might help to understand this pattern a little better.
+
+```{r echo=FALSE}
+         
+ggplot(data = redwine, aes(fixed.acidity)) +
+  geom_histogram(binwidth = .5, col="black", fill="grey", alpha = .8) +
+  scale_x_continuous(breaks=seq(4,16,1), limits = c(4, quantile(redwine$fixed.acidity, .99)))
+
+summary(redwine$fixed.acidity)
+
+ggplot(data = redwine, aes(volatile.acidity)) +
+  geom_histogram(binwidth = .05, col="black", fill="grey", alpha = .8) +
+  scale_x_continuous(breaks=seq(0,1.6,.1), limits = c(0, 1))
+
+summary(redwine$volatile.acidity)
+
+ggplot(data = redwine, aes(citric.acid)) +
+  geom_histogram(binwidth = .005, col="black", fill="grey", alpha = .8) +
+  scale_x_sqrt()
+
+ggplot(data = redwine, aes(citric.acid)) +
+  geom_histogram(binwidth = .005, col="black", fill="grey", alpha = .8) +
+  scale_x_sqrt(limits = c(.01, 1))
+
+summary(redwine$citric.acid)
+  
+```
+
+A closer look at the histograms above illustrates how the distrutions of fixed 
+and volatile acidity became more normal in distribution through limiting the 
+x-axis. 
+
+Citric acid seems to be different. We can see that a significant part of red 
+wines has a very little or no amount of citric acid. About 8% of red wines 
+contain no citric acid, which makes adding 'freshness' and flavor to wines 
+using citric acid rather look optional [Cortez et al., 2009]. On the other hand 
+we can also confirm the bimodal wavepattern from the first histogram and see 
+that the counts are peaking around 0.25 and 0.50. 
+
+```{r echo=FALSE}
+ggplot(data = redwine, aes(residual.sugar)) +
+  geom_histogram(binwidth = .05, col="black", fill="grey", alpha = .8) +
+  scale_x_log10(limits = quantile(redwine$residual.sugar, c(0, .99)))
+
+summary(redwine$residual.sugar)
+
+ggplot(data = redwine, aes(chlorides)) +
+  geom_histogram(binwidth = .1, col="black", fill="grey", alpha = .8) +
+  scale_x_log10(limits = quantile(redwine$chlorides, c(0, .99)))
+
+summary(redwine$chlorides)
+```
+
+The transformatins applied helped to understand both distrutions better. While
+sugar still seems to be slightly skewed to the right we can observe that 
+clorides peak very sharp at a very particular point on the scale. It seems that
+there is far more variation in the amount of sugar and less so in salts. I am, 
+at this point not yet very sure about my intuition on these variables. 
+
+I am  attempting to transform both variables using a log10 method in order 
+to get a clearer view of the distrutions. 
+
+```{r echo=FALSE}
+
+ggplot(data = redwine, aes(free.sulfur.dioxide)) +
+  geom_histogram(binwidth = .05, col="black", fill="grey", alpha = .8) +
+  scale_x_log10()
+
+summary(redwine$free.sulfur.dioxide)
+
+ggplot(data = redwine, aes(total.sulfur.dioxide)) +
+  geom_histogram(binwidth = .05, col="black", fill="grey", alpha = .8) +
+  scale_x_log10()
+
+summary(redwine$total.sulfur.dioxide)
+```
+
+Interestingly, the log10 method helped significantly to transform the variables 
+to a more normal distribution. While total.sulfur.dioxide shows a nearly 
+bell-type pattern in the histogram we can observe that free.sulfur.dioxide is 
+distributed in a more scattered way. There are some outliers that contain pretty 
+much no or very little free.sulfur.dioxide. In further evalutation of the same 
+variable we see that its presence throughout the distribution is rather 
+irregular. However, due to the nature of the variable itself I have a very 
+limited intuition about its significance in relationship to quality other than
+what I have already quoted above.
+
+```{r echo=FALSE}
+ggplot(data = redwine, aes(density)) +
+  geom_histogram(binwidth = .0005, col="black", fill="grey", alpha = .8) +
+  scale_x_continuous(breaks=seq(0,1.1,.001))
+
+summary(redwine$density)
+```
+
+Desity is almost perfectly bell-shaped in its distribution. Its value on the 
+scale depends on the percent of alcohol and sugar content in the red wine. I 
+have daubts that density can explain a lot of variance in quality but we will 
+see how it performs in a correlation analysis.
+
+```{r echo=FALSE}
+
+ggplot(data = redwine, aes(pH)) +
+  geom_histogram(binwidth = .05, col="black", fill="grey", alpha = .8) +
+  scale_x_continuous(breaks=seq(2.5,4.5,.1))
+
+summary(redwine$pH)
+```
+
+Very much like Desity, PH is relativly normal in its distribution. From the 
+text file, which describes the variables and how the data was collected, I can 
+gather that most wines are between 3-4 on the pH scale that spans from 0 (very 
+acidic) to 14 (very basic). The data confirms this information and is 
+illustrating that only lower PH values are suitable for wines. 
+
+```{r echo=FALSE}
+
+ggplot(data = redwine, aes(sulphates)) +
+  geom_histogram(binwidth = .05, col="black", fill="grey", alpha = .8) +
+  scale_x_continuous(breaks=seq(0,2,.1))
+
+ggplot(data = redwine, aes(sulphates)) +
+  geom_histogram(binwidth = .05, col="black", fill="grey", alpha = .8) +
+  scale_x_continuous(breaks=seq(0,2,.1), limits = quantile(redwine$sulphates, c(0, .99)))
+
+ggplot(data = redwine, aes(sulphates)) +
+  geom_histogram(binwidth = .02, col="black", fill="grey", alpha = .8) +
+  scale_x_log10(limits = quantile(redwine$sulphates, c(0, .99)))
+
+summary(redwine$sulphates)
+```
+
+Sulphates are additives which can contribute to sulfur dioxide gas (S02) levels, 
+wich acts as an antimicrobial and antioxidant. The first histogram shows a right
+skewed distribution of how the data appears as a whole. Some outliers are 
+stretching the distribution about 1/3 of where the majority of the data sits. 
+
+I was attempting to transform the variable by limiting the histogram to 99% of 
+the data. It appeared as if the distribution was still skewed to the right so 
+that I decided to apply another transformation using a log10 method. 
+
+
+```{r echo=FALSE}
+ggplot(data = redwine, aes(alcohol)) +
+  geom_histogram(binwidth = .25, col="black", fill="grey", alpha = .8) +
+  scale_x_continuous(breaks=seq(8,15, .5))
+
+ggplot(data = redwine, aes(alcohol)) +
+  geom_histogram(binwidth = .25, col="black", fill="grey", alpha = .8) +
+  scale_x_continuous(breaks=seq(8,15, .5), limits = quantile(redwine$alcohol, c(0, .99)))
+
+summary(redwine$alcohol)
+
+```
+
+Alcohol, I would assume, is one of the most important variables in wine. There 
+is a minimum of at least 8.5% of alcohol in every wine and a maximum of 15%. The 
+distribution is right skewed peaking at 9.5% affecting the total mean to μ10.42. 
+
+Unfortunately, I was not able to find an applicable transformation method that 
+could bring the distribution to a more suitable shape for analysis. However, 
+limiting the data to 99% excluding some of the outliers could fi some degree 
+of the skeweness. However, the peak at 9.5% remains as the main explaination for 
+its shape in the histogram.
+
+
+
+## Boxplot of Variables
+Since the predictors seems to have different scales, I will separate them based on similar scales. density and pH seems to have quite a normal scale, to not crowd our plot so much, I will exclude them for this.
+
+```{r}
+plot_2 <- ggplot(data = stack(wine %>% select(volatile.acidity, citric.acid, chlorides, sulphates)), mapping = aes(x = ind, y = values)) +
+  geom_boxplot(fill = "pink")+
+  theme_dark()+
+  labs(title = "Boxplot of Volatile Acidity, Citric Acid, Chlorides, Sulphates",
+       x = "Predictors",
+       y = "Value")
+
+ggplotly(plot_2)
+plot_3 <- ggplot(data = stack(wine %>% select(fixed.acidity, residual.sugar, alcohol)), mapping = aes(x = ind, y = values)) +
+  geom_boxplot(fill = "green")+
+  theme_dark()+
+  labs(title = "Boxplot of Fixed Acidity, Residual Sugar, Alcohol",
+       x = "Predictors",
+       y = "Value")
+
+ggplotly(plot_3)
+plot_4 <- ggplot(data = stack(wine %>% select(free.sulfur.dioxide, total.sulfur.dioxide)), mapping = aes(x = ind, y = values)) +
+  geom_boxplot(fill = "cyan")+
+  theme_dark()+
+  labs(title = "Boxplot of Free and Total Sulfur Dioxide",
+       x = "Predictors",
+       y = "Value")
+
+ggplotly(plot_4)
+
+```
+
+Insights:
+
+- Most of the predictors seems to have lots of outliers, therefore it won’t be to wise to have them taken out, at the cost of information loss.
+- 2 predictors of alcohol and citric.acid seems to have quite normal and good kind of distributions, based on the little number of outliers, and the median being placed quite in the center of the boxplot.
+
+
+## Checking Correlations between Predictors
+
+```{r}
+ggcorr(wine_train, label = T, hjust = 0.9, label_size = 3, layout.exp = 3)
+```
+
+Some early insights from the plot above:
+
+- Our target variable, quality seems to have quite good correlation with alcohol (positively) and volatile.acidity (negatively).
+- The opposite, quality seems to have no correlation with free.sulfur.dioxide and residual.sugar
+- There are some strong correlations that might need to be checked based on the similarity of the names. For example, strong correlations between free.sulfur.dioxide and total.sulfur.dioxide, or fixed.acidity and volatile.acidity might indicate a multicollinearity, which would be bad for some of our model.
+
+## Scatter Plots of the Strong Correlated Variables
+### Free Sulfur Dioxide and Total Sulfur Dioxide
+
+```{r}
+# Check the column names in the dataset
+colnames(wine)
+plot_5 <- ggplot(data = wine, aes(x = `free.sulfur.dioxide`, y = `total.sulfur.dioxide`)) +
+  geom_point() +
+  theme_minimal() +  # Changing the theme to minimal
+  labs(title = "Correlation between Free Sulfur Dioxide and Total Sulfur Dioxide",
+       x = "Free Sulfur Dioxide (ppm)",
+       y = "Total Sulfur Dioxide (ppm)")
+
+ggplotly(plot_5)
+
+
+```
+
+Insight:
+  
+  Although we can sort of see a trend line going from bottom left to top right, showing a positive correlation between the two variables, but the spread is quite random, therefore I don’t think that these two warrants a special feature engineering if they do have some linearity of their own.
+
+###  Fixed Acidity and Volatile Acidity
+
+```{r}
+
+plot_6 <- ggplot(data = wine, aes(x = `fixed.acidity`, y = `volatile.acidity`)) +
+  geom_point() +
+  theme_minimal() +  # Changing the theme to minimal
+  labs(title = "Correlation between Fixed and Volatile Acidity",
+       x = "Fixed Acidity",
+       y = "Volatile Acidity")
+ggplotly(plot_6)
+
+
+```
+
+Insight:
+  
+  Although the correlation is strong, as we can see from the scatter plot, there is no clear pattern to indicate that any one of the variable is able to predict the other (having their own linearity). Therefore this combination of two variables can be used safely.
+
+### Fixed Acidity and pH
+
+```{r}
+plot_7 <- ggplot(data = wine %>% mutate(label = glue("Fixed Acidity = {fixed.acidity},
+                                                      pH = {pH}")),
+                 mapping = aes(x = fixed.acidity, y = pH, text = label))+
+  geom_point(color = "aquamarine")+
+  theme_dark()+
+  labs(title = "Correlation between Fixed Acidity and pH",
+       x = "Fixed Acidity",
+       y = "pH")
+
+ggplotly(plot_7, tooltip = "label")
+```
+
+
+Insight:
+  
+  We can roughly create a trend line going from top-left to the bottom-right of the chart, but that wouldn’t be a good enough estimation since the data points are quite randomly spread out. Therefore, the linearity isn’t really seen in these two variables.
+
+###  Volatile Acidity and Citric Acid
+
+```{r}
+plot_8 <- ggplot(data = wine %>% mutate(label = glue("Volatile Acidity = {volatile.acidity},
+                                                      Citric Acid = {citric.acid}")),
+                 mapping = aes(x = volatile.acidity, y = citric.acid, text = label))+
+  geom_point(color = "turquoise")+
+  theme_dark()+
+  labs(title = "Correlation between Volatile Acidity and Citric Acid",
+       x = "Volatile Acidity",
+       y = "Citric Acid")
+
+ggplotly(plot_8, tooltip = "label")
+```
+
+Insight:
+  
+  The spread are quite throughout the bottom-left of the chart for these two variables. As with before, we can’t see a clear linearity for these two variables.
+
+##  Characteristics of Top-Rated vs Lowest-Rated Red Wines
+Let’s remind ourselves of our target variables’ current composition.
+
+```{r}
+table(wine$quality_high)
+```
+
+Let’s see what characteristics our top-rated red wine tends to have, compared to the rest. They could have some specific quality much more higher than the rest is.
+
+Since we are looking for a metric to represent the whole group in each of the characteristic (predictor), I think using a mean would be a better choice rather than others like median, since it would weigh in even the outliers that could actually accentuate its characteristic to be more distinctive than the others.
+
+So we will be grouping the data into 2 groups: red wines rated 6-8, and red wines rated other than that (3-5). After than, we will summarize each predictors using a mean() function.
+
+
+```{r}
+wine_char <- wine %>% 
+  mutate(quality_high = ifelse(quality>=6, "high", "low")) %>% 
+  group_by(quality_high) %>% 
+  summarise_all(mean) %>% 
+  select(-quality)
+
+wine_char
+
+```
+
+
+
+# Regression Model: Simple Linear with Multiple Predictors
+
+Regression model is where machine learning is looking to predict a target variable that is numerical. This is part of a supervised machine learning since we have some targets/label to be predicted, instead of just looking for some pattern.
+
+We are going to use the simple linear regression model that is taught in class. This model can be used properly if these assumptions are fulfilled:
+  
+  - Linearity
+- Normality
+- Homoscedasticity
+- No Multicollinearity
+
+## Model with No Predictor
+First, let’s make a model with no predictors, only the target of quality.
+
+```{r}
+model_nopred_lm <- lm(formula = quality~1, data = wine_train %>% select(-quality_high))
+summary(model_nopred_lm)
+```
+
+## Model using All Predictors (as baseline)
+Then the opposite, we’ll make a model with the whole predictors.
+
+```{r}
+model_allpred_lm <- lm(formula = quality~., data = wine_train %>% select(-quality_high))
+summary(model_allpred_lm)
+```
+
+Some interpretations that we can make from this simple model are:
+  
+  - Columns volatile.acidity, chlorides, total.sulfur.dioxide, sulphates, and alcohol are highly significant, looking at their p-values.
+- Columns free.sulfur.dioxide and pH are not as high, but still significant ones.
+- Since we are most likely using multiple predictors, we will look at the Adjusted R-squared value to evaluate our own model, and it is 0.3561 out of 1.0, which is around 35.61%. Quite a low score, let’s try to make this better by eliminating unnecessary predictors.
+- For now, we can’t see any variables that is causing a perfect separation, that is any variable(s) that can be used solely to “predict” the target variable that causes using a machine learning would not be an ideal thing to do, based on all the p-values seem not so extremely insignificant that none is very close to 1.
+
+## Feature Selection
+Since I have not much experiences about red wines, I feel like I’m not able to put forward any variable that must be included. Therefore, I would use a manual approach and stepwise approach(es) for the feature selection.
+
+### Manual Approach: Significance of Variables
+For the manual approach, I will first include the predictors having highest significance according to the full predictors model, then I will try to include the rest one by one and see how the adjusted R-squared will react.
+
+#### Including Highly Significant Predictors
+```{r}
+model_manual_lm <- lm(formula = quality~alcohol+volatile.acidity+sulphates+total.sulfur.dioxide+chlorides, data = wine_train)
+summary(model_manual_lm)
+```
+
+Then we’ll check a combination of the not-so-high but quite significant.
+
+```{r}
+model_manual_lm_2 <- lm(formula = quality~alcohol+volatile.acidity+sulphates+total.sulfur.dioxide+chlorides+free.sulfur.dioxide, data = wine_train)
+summary(model_manual_lm_2)
+model_manual_lm_3 <- lm(formula = quality~alcohol+volatile.acidity+sulphates+total.sulfur.dioxide+chlorides+pH, data = wine_train)
+summary(model_manual_lm_3)
+model_manual_lm_4 <- lm(formula = quality~alcohol+volatile.acidity+sulphates+total.sulfur.dioxide+chlorides+free.sulfur.dioxide+pH, data = wine_train)
+summary(model_manual_lm_4)
+
+```
+
+It’s worth noting that adding free.sulfur.dioxide only makes it considered to be not so significant, while pH only is still makes it very significant, and lastly adding makes the model seem slightly better, from the adjusted R-squared value, but it is strangely still quite the same than our baseline model of all predictors.
+
+Then, I’ll try adding other seemingly insignificant predictors one-by-one, to see the R-squared changes.
+
+```{r}
+model_manual_lm_5 <- lm(formula = quality~alcohol+volatile.acidity+sulphates+total.sulfur.dioxide+chlorides+free.sulfur.dioxide+pH+residual.sugar, data = wine_train)
+summary(model_manual_lm_5)
+model_manual_lm_6 <- lm(formula = quality~alcohol+volatile.acidity+sulphates+total.sulfur.dioxide+chlorides+free.sulfur.dioxide+pH+citric.acid, data = wine_train)
+summary(model_manual_lm_6)
+model_manual_lm_7 <- lm(formula = quality~alcohol+volatile.acidity+sulphates+total.sulfur.dioxide+chlorides+free.sulfur.dioxide+pH+fixed.acidity, data = wine_train)
+summary(model_manual_lm_7)
+model_manual_lm_8 <- lm(formula = quality~alcohol+volatile.acidity+sulphates+total.sulfur.dioxide+chlorides+free.sulfur.dioxide+pH+density, data = wine_train)
+summary(model_manual_lm_8)
+```
+
+It seems like adding citric.acid and fixed.acidity to the predictors increases the adjusted R-squared value a little bit compared to our baseline, while the other 2 decrease it. For a final step of the manual approach, I will to include both of these 2 predictors.
+
+```{r}
+model_manual_lm_9 <- lm(formula = quality~alcohol+volatile.acidity+sulphates+total.sulfur.dioxide+chlorides+free.sulfur.dioxide+pH+citric.acid+fixed.acidity, data = wine_train)
+summary(model_manual_lm_9)
+
+```
+
+It appears that the adjusted R-squared decrease a little bit. To make sure, we will compare our baseline model model_allpred_lm that was using all predictors, model_manual_lm_4 that was using only the most significant predictors, model_manual_lm_7 that was adding another predictor that at first seems insignificant but improves the R-squared.
+
+
+
+```{r}
+compare_performance(model_allpred_lm, model_manual_lm_4, model_manual_lm_7)
+```
+
+The R2 adjusted value seems quite the same, but we can see from each summary, that the model_manual_lm_7 is the best. The error from RMSE seems to be lower, and also the AIC is a bit lower. So we will use the model_manual_lm_7 to be used from our manual approach of feature selection, with the adjusted R-Squared of 0.3373.
+
+###  Stepwise Approach
+Now this would be simpler than the manual approach. The algorithm will automatically search adding or deleting predictors based on the AIC (Akaike Information Criteria) value. The lower, the better.
+
+```{r}
+model_stepwise_both_lm <- step(object = model_allpred_lm, scope = list(lower = model_nopred_lm, upper = model_allpred_lm), direction = "both", trace = F)
+summary(model_stepwise_both_lm)
+```
+
+If we compare it to our previously chosen model_manual_lm_7, the predictors chosen are the same. Therefore, we can pretty much conclude that our best model using this simple linear regression method are only explaining around 33.73% of our target variable, while the rest is explained using other variables other than that we used, or even maybe other variables excluded by the dataset provider, or simply that this model is not too suited for the dataset.
+
+## Verifying Linear Regression Assumptions
+
+###  Linearity
+This should be done before creating the linear regression models, and we have done so. Some variables seems to have quite correlations to our target variable.
+
+This assumption is also about how to interpret the summary of the model.
+```{r}
+summary(model_stepwise_both_lm)
+```
+
+The linearity assumption also describes how each of the coefficients (or estimates in the model summary above) can be interpreted.
+
+For example, we can see at the predictor volatile.acidity and we know that the ‘Estimate’ is around -0.96. This can be interpreted as: an increase of 1 unit of volatile.acidity, will decrease the final target variable of ours, the quality, as much as 0.96.
+
+The linearity assumption will also hold true to each estimates in the linear regression model, that corresponds with each predictors.
+
+### Normality
+
+Checking with Shapiro Test:
+  ```{r}
+
+
+shapiro.test(model_stepwise_both_lm$residuals)
+```
+The p-value is very small, lower that a default alpha of 0.05! Which is saying that the residuals of our model is not distributed normally. Let’s see if the plot can convince us otherwise.
+```{r}
+plot(density(model_stepwise_both_lm$residuals))
+```
+
+Sure, it’s not your usual normal distribution bell curve, but I would think that this is close enough, that we can pass this assumption.
+
+### Homoscedasticity
+
+To be objective, let’s try using Breusch-Pagan test.
+```{r}
+bptest(model_stepwise_both_lm)
+```
+
+Once again, p-value shown is a very small value (< alpha of 0.05), showing that the data is more heteroscedastic, or showing some kind of pattern in the spread, while we hope that the model is homoscedastic or randomly spread. Once again, we can try to see the plot if we can try passing this assumption to safely use the model.
+
+```{r}
+plot(model_stepwise_both_lm$fitted.values, model_stepwise_both_lm$residuals)
+abline(h = 0, col = "red")
+```
+
+Unfortunately, the data seems to be showing a pattern here, which are shown by the data spread in some kind of lines on the plot, so visually, I agree with the BP Test’s result, that this dataset might not be a good fit for this linear regression model, though we can still use it, since it’s not easy to find any kind of datasets that fulfills all of the assumption perfectly.
+
+### Multicolinearity
+Though one of our assumption above fails the test, we should still check if the model passes this one. VIF (Variance Inflation Factor) is a measure of how varying the coefficients due to multicolinearity, or few of the predictors are very much correlated and affect eachother.
+
+```{r}
+vif(model_stepwise_both_lm)
+```
+
+The rule-of-thumb is for each VIF values showing under 10. Since we can see that in all of our used predictors, we can safely say that there is no multicolinearity in our model, so our model passes this assumption.
+
+## Prediction using Test Data
+Since our model passes most assumptions, instead of predicting the test data that we separated from the beginning, we can simply copy the same predictors from the best model that we found during the comparing and verifying assumptions.
+
+```{r}
+summary(lm(formula = quality ~ volatile.acidity + chlorides + free.sulfur.dioxide + 
+             total.sulfur.dioxide + pH + sulphates + alcohol + fixed.acidity, 
+           data = wine_test))
+```
+
+It was actually somehow better than the train data result, but not by far. We can say that 44.59% of our target quality variable can be explained using the same model.
+
+## Conclusions
+Our best simple linear regression model is found both using manual or stepwise approach, involving following predictors:
+  -volatile.acidity
+- chlorides
+- free.sulfur.dioxide
+- total.sulfur.dioxide
+- pH
+- sulphates
+-alcohol
+- fixed.acidity
+
+The adjusted R-squared of the train data is estimated at 33.73%, but on the test data it’s improved to 44.59%.
+Our model is not so perfect that it passes all of our assumptions, but it only fails one, so let’s see if other model will be “objectively” better than this model.
+
+## Pre-processing and Scaling the Dataset
+Let’s check the dataset summary and check the range of the data (minimum-maximum values of each predictors).
+
+```{r}
+summary(wine_train)
+```
+
+### Separating Predictors and Target Variables
+Before we are scaling the data points, we would need to separate the labels, or the target variable from the predictors, since we don’t need the target variable to be scaled
+```{r}
+wine_train_x <- wine_train %>% 
+  select(-c("quality", "quality_high"))
+
+wine_train_y <- wine_train %>% 
+  pull(quality_high)
+
+wine_test_x <- wine_test %>% 
+  select(-c("quality", "quality_high"))
+
+wine_test_y <- wine_test %>% 
+  pull(quality_high)
+```
+
+
+# Classification Model: Decision Tree
+Decision Tree merupakan tree-based model yang cukup sederhana dengan performa yang robust/powerful untuk prediksi. Decision Tree menghasilkan visualisasi berupa pohon keputusan yang dapat diinterpretasi dengan mudah.
+
+Karakter tambahan Decision Tree:
+  
+  Variable predictor diasumsikan saling dependent, sehingga dapat mengatasi multicollinearity.
+Dapat mengatasi nilai predictor numerik yang berupa outlier.
+Decision Tree is a classification machine learning model that is quite simple deemed to have a robust and powerful performance to predict and visualize using a tree-like model. Starting from the very top-center which is the root node, each “branch” will have a distinctive variable and criteria to be chosen for which the algorithm will be categorizing each prediction optimally, so although not ideal, this model is not too bad to be used for numerical predictors like the dataset we have.
+
+The assumptions of the Decision Tree model is that no multicolinearity, and not sensitive to outliers (for example, if the outlier datum is like 10,000 by itself while the normally it’s only around 100-200, the algorithm could just categorize them like “>200” anyway).
+
+Although decision tree can be used as a regression, it is usually not recommended, so let’s see if using it is a mistake or a breakthrough
+
+## Model Fitting
+Since the algorithm of Decision Tree is already using the best entropy, or information gain when choosing the best predictors and criteria, we don’t need to do a feature selection too much. Maybe later we might need to prune the tree when it is becoming too crowded to read.
+
+### Using it as a Regression Model
+
+```{r}
+model_allpred_tree_reg <- ctree(formula = quality ~ . , data = wine_train %>% select(-quality_high) )
+
+plot(model_allpred_tree_reg, type = "simple")
+```
+The information is very crowded! This model and plot is only using the default parameters of a decision tree, so we can tune it out a little better if we needed it to. But then again, looking at the leafs/terminal nodes, which are the nodes that are not branching to another decision anymore (the greyed out boxes at relatively bottom of the tree), we can see that there are some numbers predicted, while there is a possible error in there also. Just looking at one leaf node at quite the middle of the tree, it has the predicted value of 5.672, with a possible error of 37.4, well that would not make any sense, wouldn’t it? Our quality rating is only from 0-10 anyway. Similarly, there are a lot of leaf nodes showing similar, too extreme errors, that I don’t think pruning this regression decision tree would help it too much.
+
+Therefore, I think it would be best if we go back to use the Decision Tree as a classification model, and use the quality_high as the target variable instead.
+
+#### Using it as a Classification Model
+As It Is
+
+```{r}
+model_allpred_tree_cla <- ctree(formula = quality_high ~ . , data = wine_train %>% select(-quality) )
+
+plot(model_allpred_tree_cla)
+plot(model_allpred_tree_cla, type = "simple")
+
+```
+
+I was tempted to use a plot type=simple like before, but seeing that the result are still overlapped with eachother, I prefer to use without it instead, since we can pretty much classify each leaf node using a default threshold of 0.5, to use its prediction. It should be noted that the leaf count is 15 for this one.
+
+As we can see from the tree, some decisions are quite polarizing and leave a little error to be considered, for example Node 14 (the probability is very close to being 0) or Node 28 (it’s very close to being 1), while others are not so polarized, even few nodes are a bit close to our threshold of 0.5 (like Node 11 and Node 29) that it might be the nodes that is causing most of the errors (false negatives or false positives) later on.
+
+Predictors that are highly relevant/significant (excluding duplicates and if the branches are all classifying to only one class):
+  - alcohol
+- volatile.acidity
+- chlorides
+- sulphates
+- total.sulfur.dioxide
+
+#### Pruning the Model
+There is some hyperparameters available to try and prune the model, which is:
+  - mincriterion. Default is 0.95, this parameter is about checking each decision’s p-value so that it would branch only if p-value < (1-mincriterion). Higher number would prune the tree, making a node more difficult to branch to have less error tolerated of its decision.
+- minsplit Default is 20, this parameter ensures the minimum number of observations after branching. A higher number would also prune the tree, making a node search for a decision that is splitting the higher number of observation on each future branches.
+- minbucket. Default is 7, this parameter ensures the minimum number of observations in leafs/terminal nodes. Similar to minsplit, if this is set to a higher number, it would definitely prune the model as more observations are needed for the algorithm to make a decision criterion for terminating a branch into a leaf.
+- There is no rule-of-thumb for each numbers. After trying some numbers, this setting seems to prune the leafs count quite a lot, around half of the original ones, so this could be another model to be considered.
+
+```{r}
+model_allpred_tree_cla_prune <- ctree(formula = quality_high ~ . ,
+                                      data = wine_train %>% select(-quality),
+                                      control = ctree_control(mincriterion = 0.95, minsplit = 100, minbucket = 100))
+
+plot(model_allpred_tree_cla_prune, type = "simple")
+```
+
+But then again, if we see better at the right side of the root node, in which if each of our data is actually having alcohol>10.3, whatever the decision may fall under it, all will classified as “1”. Though the number of observations (n) and error possibility (err) are different between each leaf, won’t any value is not relevant then? Therefore, although this is pruning half of the original leaf count into 8 leafs and much more readable, I think this is not quite a good model yet, so I will try to find one again.
+
+After some changing with the numbers, I found the following decision tree:
+  
+```{r}
+model_allpred_tree_cla_prune2 <- ctree(formula = quality_high ~ . ,
+                                       data = wine_train %>% select(-quality),
+                                       control = ctree_control(mincriterion = 0.98, minsplit = 100, minbucket = 20))
+
+plot(model_allpred_tree_cla_prune2, type = "simple")
+```
+
+Although not super good, that is the bottom-right internal node are branching both decisions to class of “1”, and the leaf count is 11 (though technically 10 due to the same thing mentioned; 2 leaf node branching from the same internal node that both are classifying the data to “1”), I think I would be happier with this one.
+
+When adjusting the parameters to get this model, what I was thinking is that the “precious” leaf nodes classifying data to “0” on the right side of the root node must be preserved. We can see from the n numbers from the the 0 leaf node in the default model that some are very low, like 18, 29, or 61, therefore I am very careful to not increase the minbucket parameter too much. Therefore I “pruned” at least one of the “0” right-side leaf nodes, and play again with the other thresholds, to finally achieve this model.
+
+Predictors that are highly relevant/significant (excluding duplicates and if the branches are all classifying to only one class): * alcohol * volatile.acidity * sulphates * total.sulfur.dioxide
+
+Using one less predictor compared to the one used on the default parameters, which is excluding chlorides.
+
+## Model Evaluation
+There is no better way to evaluate the decision tree models, than to predict the testing data and create a confusion matrix.
+
+###  Using Default Parameters
+
+```{r}
+wine_tree_def_pred <- predict(object = model_allpred_tree_cla,
+                              newdata = wine_test,
+                              type = "response")
+
+confusionMatrix(data = wine_tree_def_pred,
+                reference = wine_test_y,
+                positive = "1")
+```
+
+Accuracy: 75.00%
+
+Precision / Pos Pred Value: 79.35%
+
+One of the good ones we’ve had compared to other models, although since the leafs are too many, this could be less readable.
+
+### Using Customized Parameters
+
+```{r}
+wine_tree_cust_pred <- predict(object = model_allpred_tree_cla_prune2,
+                               newdata = wine_test,
+                               type = "response")
+
+confusionMatrix(data = wine_tree_cust_pred,
+                reference = wine_test_y,
+                positive = "1")
+```
+
+
+Accuracy: 74.38%
+
+Precision / Pos Pred Value: 78.34%
+
+A little bit less than that of the default parameters, but this one is more readable.
+
+##  Conclusions
+Our Decision Tree model using the default parameters are showing the best metrics compared to the one that we pruned, or tamper with some of the param:
+  - alcohol
+- volatile.acidity
+- chlorides
+- sulphates
+- total.sulfur.dioxide
+
+We have made a pruned, alternative model using customized parameters which is more readable since it contains a little bit less leaf nodes.
+The Accuracy of our best Decision Tree model is 75.00%, and the Precision is 79.35%.
+
+
+# Classification Model: Random Forest
+
+Random Forest is one of the machine learning models that is using the concept of ensemble methods (using multiple models to find the best one through majority or averaging) consisting of Decision Trees. Each of the trees has its own characteristics and it is independent from each other. In simpler terms, this model is basically making multiple Decision Tree models with random predictors/variables to use, then either use the majority voting system for classification cases, or mean of the targets for regression ones.
+
+This model is called to have one of the best and accurate predictions amongst most models. The general downside though, to do multiple modeling, this method will need resources like processors, RAM, and most likely, time, to compute the predicted result.
+
+## Model Fitting
+Since it is said that Random Forest can be utilized for both regression and classification models, let’s try both of them. I will attach the code in the chunk below, but they will be commented, as sometimes, model fitting for Random Forest could take hours. Although it would depend on how many folds and repetition will the cross-validation of the data be done, and the number of observations and variables themselves. Therefore, I will originally run the code but save them in RDS file so the model can be used and evaluated easily, and takes less time.
+
+### Fitting as a Regression Model
+
+
+```{r}
+ set.seed(314)
+# 
+ ctrl <- trainControl(method = "repeatedcv",
+                      number = 5, # k-fold
+                      repeats = 3) # repetition
+ 
+ wine_forest_reg <- train(quality ~ .,
+                    data = wine_train %>% select(-quality_high),
+                    method = "rf", # random forest
+                    trControl = ctrl)
+ 
+ saveRDS(wine_forest_reg, "wine_forest_reg.RDS") # saving model
+```
+
+Running this model takes me about 2-4 minutes. You won’t want to wait that long for a webpage to open, don’t you?
+  
+### Fitting as a Classification Model
+  
+```{r}
+ set.seed(314)
+ 
+ wine_forest_cla <- train(quality_high ~ .,
+                    data = wine_train %>% select(-quality),
+                    method = "rf", # random forest
+                    trControl = ctrl)
+ 
+ saveRDS(wine_forest_cla, "wine_forest_cla.RDS") # saving model
+```
+
+For this one, somehow it took only around 1 minute to finish.
+
+## Model Evaluation
+
+### Regression Model
+First, let’s read the saved model.
+
+```{r}
+wine_forest_reg <- readRDS("wine_forest_reg.RDS")
+wine_forest_reg
+```
+
+mtry is the number of predictors that will be used when fitting a new Decision Tree model. From the model summary above, after some iterations, we can see that the algorithm chose the mtry value of 6, as it has the lowest RMSE, or basically an error estimation value.
+
+Random Forest has its own cross validation technique called Out-Of-Bag Error, which basically means that the algorithm is separating some data randomly, and evaluate the model based on that “unseen” data, just like what we did manually. This is why a cross validation or train-test splitting technique won’t be necessary when we are using Random Forest.
+
+```{r}
+wine_forest_reg$finalModel
+```
+
+The algorithm valued its model accuracy at 47.49%, which is quite low. But if we compare this to our first linear regression model, this one is actually improved by a little.
+
+Even though the algorithm itself has tested the model on the Out-Of-Bag samples, since we have a testing data set aside, let’s try to predict the value……………….
+
+### Classification Model
+Again, let’s read the saved model.
+
+```{r}
+wine_forest_cla <- readRDS("wine_forest_cla.RDS")
+wine_forest_cla
+
+```
+
+The mtry value that the algorithm feels best to use is 2, based on the repeated attempts. Therefore, it will randomly choose between 2 predictors on each node of the Decision Tree that it makes, and so on until the tree is completed.
+
+```{r}
+wine_forest_cla$finalModel
+```
+
+As explained before, OOB or Out-Of-Bag is Random Forest’s term for its own randomly sampled observations that are treated like unseen data and will be used to evaluate the model. In here it appears that it evaluates the error rate of only 18.69%! That means its accuracy is 81.31%, the highest one of all the models so far.
+
+Since we have our own testing data set aside, let’s try to evaluate the model again based on that dataset. First we would need to predict the classes first, then use a confusion matrix to see the accuracy and precision.
+
+```{r}
+wine_forest_cla_pred <- predict(object = wine_forest_cla,
+                                newdata = wine_test,
+                                type = "raw")
+
+confusionMatrix(data = wine_forest_cla_pred,
+                reference = wine_test$quality_high,
+                positive = "1")
+```
+
+
+Accuracy: 83.12%
+
+Precision / Pos Pred Value: 81.28%
+
+It’s even better! The first time we have seen any prediction models, be it regression or classification, that touches the 80% accuracy rate. As many have said, this is surely one of the best model that we can use to predict target variable(s).
+
+## Conclusions
+Random Forest is objectively performing the best out of all the models.
+As a regression model, the model was performing at 47.49% of its capability to explain the target variable (while the rest of 52.51% are only able to be explained by predictors outside the one that is used)
+As a classification model, the Accuracy was estimated at 83.12%, and its Precision was 81.28%, objectively the best out of all model.
+
+#  Comparing Models and Conclusions
+
+
+## Analysis Result:
+The exploration of the data we focused on in the Red Wine Quality data set show that there are multiple factors impacting the Quality of the wine, positively and negatively. WIth this particular analysis we saw that the clear outlier here is that high percentage of Alcohol correlates to high-quality wines. Following, it seems that high-quality wines have lower Volatile.Acidity which matches with our results. Change in Residual.Sugar had no effect on Quality and it didn’t seem to impact any other variable. As we saw the Quality levels of our wines are unbalanced which probably severely impacted our final results and we could say we were limited by it in grand scheme of things. This meant that more than 80%
+ of the wine tested in this data set did not satisfy our Personal.Quality test. Also, as we saw at the beginning Free.Sulfur.Dioxide, Total.Sulfur.Dioxide and Density weren’t balanced with the rest of the data, so this part of the data would need another further treatment. We can conclude that the levels of wine quality are based on personal taste of experts, but there are also factors like year of production, brew time, location, wine brand, etc. that could have an important impact to our data that we didn’t have access too.
+
+## Regression Models Performance
+- The Linear Regression Model, derived through both manual and stepwise approaches, yielded an adjusted R-squared metric of 44.59%. However, it failed one of the four required assumptions, indicating caution regarding its use due to heteroscedasticity.
+- The Decision Tree Model exhibited errors in leaf nodes, making it unfit for estimating the numerical quality rating of red wine.
+- The Random Forest Model, an ensemble of Decision Trees, showcased improvement with a 47.49% score in explaining quality. While resource usage might not be balanced for larger datasets or urgent inquiries, it stands out as one of the best regression models explored.
+
+## Classification Models Performnce
+- The Decision Tree Model, known for its interpretability, achieved 75.00% accuracy and 79.35% precision. After some parameter tuning, a simpler alternative emerged, albeit with a slight sacrifice in accuracy and precision.
+- The Random Forest Model outperformed all classification methods with 83.12% accuracy and 81.28% precision. However, its computational demands may not be suitable for urgent cases or resource-constrained scenarios.
+
+## Overall Conclusions
+- Random Forest emerges as a robust machine learning method, offering a balance between accuracy, precision, and resource utilization. Across various model comparisons, key predictors like Alcohol, Volatile Acidity, Sulphates, and Total Sulfur Dioxides emerged as crucial factors influencing red wine quality.
+
+
+# References
+@Dua:2019 and @Samartha:2019 and @Jeff:2019 and @Hadley:2016 and @David:2017 and @Miadad:2015
+
+
+
